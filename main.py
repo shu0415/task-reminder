@@ -15,6 +15,10 @@ JST = pytz.timezone("Asia/Tokyo")
 
 @app.post("/slack/events")
 async def slack_events(req: Request):
+    # Slack URL検証チャレンジに対応
+    body = await req.json() if req.headers.get("content-type") == "application/json" else {}
+    if body.get("type") == "url_verification":
+        return {"challenge": body.get("challenge")}
     return await handler.handle(req)
 
 
