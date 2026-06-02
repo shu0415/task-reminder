@@ -92,6 +92,17 @@ def build_task_blocks(tasks: list[dict], platform: str) -> list[dict]:
     return blocks
 
 
+def get_sheet_url(platform: str) -> str:
+    """プラットフォームごとのシートURLを取得"""
+    try:
+        from src.sheets import get_spreadsheet
+        ss = get_spreadsheet()
+        ws = ss.worksheet(platform)
+        return f"{SPREADSHEET_URL}/edit#gid={ws.id}"
+    except Exception:
+        return f"{SPREADSHEET_URL}/edit"
+
+
 def send_reminder(platform: str):
     channel = PLATFORM_CHANNELS.get(platform)
     if not channel:
@@ -138,12 +149,13 @@ def send_reminder(platform: str):
             "text": {"type": "mrkdwn", "text": f"🤖 *AI分析*\n{ai_comment}"}
         })
 
+    sheet_url = get_sheet_url(platform)
     blocks.append({
         "type": "actions",
         "elements": [{
             "type": "button",
             "text": {"type": "plain_text", "text": "📊 スプレッドシートを開く"},
-            "url": f"{SPREADSHEET_URL}#gid=0",
+            "url": sheet_url,
             "action_id": "open_sheet"
         }]
     })
