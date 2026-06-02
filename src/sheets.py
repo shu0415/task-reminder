@@ -3,6 +3,7 @@ from google.oauth2.service_account import Credentials
 from datetime import date
 from typing import Optional
 import os
+import json
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -28,9 +29,16 @@ PRIORITIES = ["高", "中", "低"]
 
 
 def get_client() -> gspread.Client:
-    creds = Credentials.from_service_account_file(
-        os.environ["GOOGLE_CREDENTIALS_FILE"], scopes=SCOPES
-    )
+    # 環境変数からJSON文字列で読み込む（Railway用）
+    creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+    if creds_json:
+        creds_dict = json.loads(creds_json)
+        creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+    else:
+        # ローカル開発用（ファイルから読み込む）
+        creds = Credentials.from_service_account_file(
+            os.environ["GOOGLE_CREDENTIALS_FILE"], scopes=SCOPES
+        )
     return gspread.authorize(creds)
 
 
