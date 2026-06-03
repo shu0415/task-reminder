@@ -43,22 +43,22 @@ def remind_now():
 
 
 def start_scheduler():
-    time1 = os.environ.get("REMINDER_TIME_1", "09:00").split(":")
-    time2 = os.environ.get("REMINDER_TIME_2", "13:00").split(":")
+    times = []
+    for i in range(1, 4):
+        val = os.environ.get(f"REMINDER_TIME_{i}")
+        if val:
+            times.append((i, val.split(":")))
 
     scheduler = BackgroundScheduler(timezone=JST)
-    scheduler.add_job(
-        send_all_reminders,
-        CronTrigger(hour=int(time1[0]), minute=int(time1[1]), timezone=JST),
-        id="reminder_1"
-    )
-    scheduler.add_job(
-        send_all_reminders,
-        CronTrigger(hour=int(time2[0]), minute=int(time2[1]), timezone=JST),
-        id="reminder_2"
-    )
+    for idx, parts in times:
+        scheduler.add_job(
+            send_all_reminders,
+            CronTrigger(hour=int(parts[0]), minute=int(parts[1]), timezone=JST),
+            id=f"reminder_{idx}"
+        )
     scheduler.start()
-    print(f"スケジューラー起動: {time1[0]}:{time1[1]} / {time2[0]}:{time2[1]} JST")
+    time_str = " / ".join(f"{p[0]}:{p[1]}" for _, p in times)
+    print(f"スケジューラー起動: {time_str} JST")
 
 
 @app.on_event("startup")
