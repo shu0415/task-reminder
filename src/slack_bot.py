@@ -1,4 +1,5 @@
 import os
+import re
 from slack_bolt import App
 from slack_bolt.adapter.fastapi import SlackRequestHandler
 from datetime import date
@@ -37,6 +38,24 @@ STATUS_EMOJI = {
 SPREADSHEET_URL = f"https://docs.google.com/spreadsheets/d/{os.environ.get('SPREADSHEET_ID', '')}"
 
 
+def parse_date_safe(value):
+    """期限を安全にパース。ハイフン/スラッシュ/ドット区切り、ゼロ埋めなし、
+    '2026年6月3日'、時刻付きなど、どんな表記でも年月日の数字を拾う。失敗時はNone。"""
+    if not value:
+        return None
+    m = re.search(r"(\d{4})\D+(\d{1,2})\D+(\d{1,2})", str(value))
+    if m:
+        y, mo, d = map(int, m.groups())
+        try:
+            return date(y, mo, d)
+        except ValueError:
+            return None
+    try:
+        return date.fromisoformat(str(value).strip()[:10])
+    except ValueError:
+        return None
+
+
 def build_task_blocks(tasks: list[dict], platform: str) -> list[dict]:
     blocks = []
 
@@ -52,8 +71,9 @@ def build_task_blocks(tasks: list[dict], platform: str) -> list[dict]:
         # 期限チェック
         deadline_label = ""
         if deadline:
-            try:
-                delta = (date.fromisoformat(str(deadline)) - date.today()).days
+            d = parse_date_safe(deadline)
+            if d:
+                delta = (d - date.today()).days
                 if delta < 0:
                     deadline_label = f"*🔴 期限超過 ({deadline})*"
                 elif delta == 0:
@@ -62,7 +82,7 @@ def build_task_blocks(tasks: list[dict], platform: str) -> list[dict]:
                     deadline_label = f"🟡 {deadline}締切"
                 else:
                     deadline_label = f"📅 {deadline}締切"
-            except ValueError:
+            else:
                 deadline_label = f"📅 {deadline}"
 
         score_label = f"AIスコア: {ai_score}" if ai_score else ""
@@ -131,8 +151,11 @@ def send_reminder(platform: str):
 
     emoji = PLATFORM_EMOJI.get(platform, "📋")
     now_str = date.today().strftime("%Y/%m/%d")
-    overdue = [t for t in tasks if t.get("期限") and
-               (date.fromisoformat(str(t["期限"])) - date.today()).days < 0]
+    overdue = []
+    for t in tasks:
+        d = parse_date_safe(t.get("期限"))
+        if d and (d - date.today()).days < 0:
+            overdue.append(t)
 
     header_text = (
         f"{emoji} *{platform} タスクリマインド*　{now_str}\n"
@@ -170,7 +193,15 @@ def send_reminder(platform: str):
         }]
     })
 
-    app.client.chat_postMessage(channel=channel, blocks=blocks, text=f"{platform}のタスクリマインド")
+    try:
+        app.client.chat_postMessage(channel=channel, blocks=blocks, text=f"{platform}のタスクリマインド")
+    except Exception as e:
+        # ブロックが原因で失敗しても、最低限テキストだけは必ず届ける
+        print(f"[{platform}] ブロック投稿失敗、テキストで再送: {e}")
+        app.client.chat_postMessage(
+            channel=channel,
+            text=f"{emoji} {platform} タスクリマインド {now_str}\n未完了: {len(tasks)}件"
+        )
 
 
 def send_all_reminders():
