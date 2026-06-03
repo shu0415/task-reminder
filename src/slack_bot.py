@@ -114,12 +114,20 @@ def send_reminder(platform: str):
     tasks = get_pending_tasks(platform)
     all_tasks = get_all_tasks(platform)
 
-    # AIスコアリング
+    # AIスコアリング（失敗してもスキップ）
     if tasks:
-        tasks = score_tasks(tasks, platform)
+        try:
+            tasks = score_tasks(tasks, platform)
+        except Exception as e:
+            print(f"[{platform}] AIスコアリングをスキップ: {e}")
 
-    # AI分析コメント
-    ai_comment = analyze_patterns(all_tasks, platform) if all_tasks else ""
+    # AI分析コメント（失敗してもスキップ）
+    ai_comment = ""
+    if all_tasks:
+        try:
+            ai_comment = analyze_patterns(all_tasks, platform)
+        except Exception as e:
+            print(f"[{platform}] AI分析をスキップ: {e}")
 
     emoji = PLATFORM_EMOJI.get(platform, "📋")
     now_str = date.today().strftime("%Y/%m/%d")
