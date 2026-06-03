@@ -16,6 +16,7 @@ PLATFORM_CHANNELS = {
     "TikTok": os.environ.get("SLACK_CHANNEL_TIKTOK", ""),
     "X": os.environ.get("SLACK_CHANNEL_X", ""),
     "Gumroad": os.environ.get("SLACK_CHANNEL_GUMROAD", ""),
+    "その他": os.environ.get("SLACK_CHANNEL_OTHER", ""),
 }
 
 PLATFORM_EMOJI = {
@@ -23,6 +24,7 @@ PLATFORM_EMOJI = {
     "TikTok": "🎵",
     "X": "🐦",
     "Gumroad": "🛒",
+    "その他": "📋",
 }
 
 STATUS_EMOJI = {

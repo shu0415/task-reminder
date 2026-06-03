@@ -10,13 +10,14 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-PLATFORMS = ["Instagram", "TikTok", "X", "Gumroad"]
+PLATFORMS = ["Instagram", "TikTok", "X", "Gumroad", "その他"]
 
 CATEGORIES = {
     "Instagram": ["投稿", "リール", "ストーリー", "企画", "分析", "DM返信"],
     "TikTok": ["動画投稿", "企画", "分析", "コメント返信"],
     "X": ["ツイート", "企画", "分析", "リプ返信"],
     "Gumroad": ["商品作成", "販売ページ", "メール確認", "分析"],
+    "その他": ["企画", "リサーチ", "ミーティング", "事務", "その他"],
 }
 
 HEADERS = [
