@@ -252,7 +252,11 @@ def handle_status_update(ack, body, action):
     # まず即座にackを返す（Slackの3秒タイムアウト・500回避）
     ack()
     try:
-        value = action.get("value", "")
+        # overflowメニューは selected_option.value に入る。ボタンは value に入る。
+        value = (
+            action.get("value")
+            or action.get("selected_option", {}).get("value", "")
+        )
         channel = body.get("container", {}).get("channel_id", "")
         user = body.get("user", {}).get("name", "")
         # 重い処理はバックグラウンドへ逃がす
