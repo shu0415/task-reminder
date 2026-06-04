@@ -1,5 +1,6 @@
 import os
 import re
+import threading
 from slack_bolt import App
 from slack_bolt.adapter.fastapi import SlackRequestHandler
 from datetime import date
@@ -214,24 +215,55 @@ def send_all_reminders():
 
 
 # ステータス変更のインタラクション受信
-@app.action({"action_id": lambda aid: aid.startswith("status_update_")})
-def handle_status_update(ack, body, action):
-    ack()
-    value = action.get("value", "")
+def _process_status_update(value: str, channel: str, user: str):
+    """重い処理（シート更新＋通知）。バックグラウンドで実行され、例外はここで握りつぶす。"""
     try:
         platform, task_id, new_status = value.split("|")
     except ValueError:
+        print(f"ステータス更新: 不正なvalue: {value!r}")
         return
 
-    success = update_task_status(platform, task_id, new_status)
-    user = body["user"]["name"]
+    try:
+        success = update_task_status(platform, task_id, new_status)
+    except Exception as e:
+        print(f"ステータス更新エラー [{task_id}]: {e}")
+        if channel:
+            try:
+                app.client.chat_postMessage(
+                    channel=channel,
+                    text=f"⚠️ *{task_id}* の更新に失敗しました。少し待って再度お試しください。"
+                )
+            except Exception:
+                pass
+        return
 
-    if success:
-        channel = body["container"]["channel_id"]
-        app.client.chat_postMessage(
-            channel=channel,
-            text=f"✅ *{task_id}* のステータスを *{new_status}* に更新しました（{user}）"
-        )
+    if success and channel:
+        try:
+            app.client.chat_postMessage(
+                channel=channel,
+                text=f"✅ *{task_id}* のステータスを *{new_status}* に更新しました（{user}）"
+            )
+        except Exception as e:
+            print(f"ステータス更新の通知失敗 [{task_id}]: {e}")
+
+
+@app.action({"action_id": lambda aid: aid.startswith("status_update_")})
+def handle_status_update(ack, body, action):
+    # まず即座にackを返す（Slackの3秒タイムアウト・500回避）
+    ack()
+    try:
+        value = action.get("value", "")
+        channel = body.get("container", {}).get("channel_id", "")
+        user = body.get("user", {}).get("name", "")
+        # 重い処理はバックグラウンドへ逃がす
+        threading.Thread(
+            target=_process_status_update,
+            args=(value, channel, user),
+            daemon=True,
+        ).start()
+    except Exception as e:
+        # 何があってもSlackには500を返さない
+        print(f"handle_status_update エラー: {e}")
 
 
 @app.action("open_sheet")
