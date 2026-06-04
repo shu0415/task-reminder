@@ -29,23 +29,33 @@ STATUSES = ["未着手", "進行中", "完了", "保留"]
 PRIORITIES = ["高", "中", "低"]
 
 
+_client = None
+_spreadsheet = None
+
+
 def get_client() -> gspread.Client:
-    # 環境変数からJSON文字列で読み込む（Railway用）
-    creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
-    if creds_json:
-        creds_dict = json.loads(creds_json)
-        creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-    else:
-        # ローカル開発用（ファイルから読み込む）
-        creds = Credentials.from_service_account_file(
-            os.environ["GOOGLE_CREDENTIALS_FILE"], scopes=SCOPES
-        )
-    return gspread.authorize(creds)
+    # 認証は1回だけ。gspreadのセッションがトークンを自動更新するため使い回して安全。
+    global _client
+    if _client is None:
+        creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+        if creds_json:
+            creds_dict = json.loads(creds_json)
+            creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+        else:
+            # ローカル開発用（ファイルから読み込む）
+            creds = Credentials.from_service_account_file(
+                os.environ["GOOGLE_CREDENTIALS_FILE"], scopes=SCOPES
+            )
+        _client = gspread.authorize(creds)
+    return _client
 
 
 def get_spreadsheet() -> gspread.Spreadsheet:
-    client = get_client()
-    return client.open_by_key(os.environ["SPREADSHEET_ID"])
+    # スプレッドシートのオープンも1回だけキャッシュ
+    global _spreadsheet
+    if _spreadsheet is None:
+        _spreadsheet = get_client().open_by_key(os.environ["SPREADSHEET_ID"])
+    return _spreadsheet
 
 
 def init_sheets():
@@ -70,18 +80,12 @@ def init_sheets():
     print("シートの初期化が完了しました")
 
 
-def get_pending_tasks(platform: str) -> list[dict]:
-    """未完了タスクを取得"""
-    ss = get_spreadsheet()
-    ws = ss.worksheet(platform)
+def get_tasks(platform: str) -> tuple[list[dict], list[dict]]:
+    """全タスクと未完了タスクを1回の読み込みで取得して返す（pending, all）。"""
+    ws = get_spreadsheet().worksheet(platform)
     rows = ws.get_all_records()
-    return [r for r in rows if r.get("ステータス") not in ("完了",) and r.get("タスクID")]
-
-
-def get_all_tasks(platform: str) -> list[dict]:
-    ss = get_spreadsheet()
-    ws = ss.worksheet(platform)
-    return ws.get_all_records()
+    pending = [r for r in rows if r.get("ステータス") not in ("完了",) and r.get("タスクID")]
+    return pending, rows
 
 
 def apply_completed_formatting():

@@ -6,8 +6,11 @@ from slack_bolt.adapter.fastapi import SlackRequestHandler
 from datetime import date, datetime, timezone, timedelta
 
 JST = timezone(timedelta(hours=9))
-from src.sheets import get_pending_tasks, get_all_tasks, update_task_status, PLATFORMS
+from src.sheets import get_tasks, update_task_status, PLATFORMS
 from src.ai import score_tasks, analyze_patterns
+
+# AI機能のON/OFF。クレジット切れ等で使わないときは毎回のAPI失敗待ちをなくし高速化。
+ENABLE_AI = os.environ.get("ENABLE_AI", "false").lower() == "true"
 
 app = App(
     token=os.environ["SLACK_BOT_TOKEN"],
@@ -117,13 +120,16 @@ def build_task_blocks(tasks: list[dict], platform: str) -> list[dict]:
     return blocks
 
 
+_gid_cache: dict[str, int] = {}
+
+
 def get_sheet_url(platform: str) -> str:
-    """プラットフォームごとのシートURLを取得"""
+    """プラットフォームごとのシートURLを取得（gidはキャッシュして再取得しない）"""
     try:
-        from src.sheets import get_spreadsheet
-        ss = get_spreadsheet()
-        ws = ss.worksheet(platform)
-        return f"{SPREADSHEET_URL}/edit#gid={ws.id}"
+        if platform not in _gid_cache:
+            from src.sheets import get_spreadsheet
+            _gid_cache[platform] = get_spreadsheet().worksheet(platform).id
+        return f"{SPREADSHEET_URL}/edit#gid={_gid_cache[platform]}"
     except Exception:
         return f"{SPREADSHEET_URL}/edit"
 
@@ -134,23 +140,22 @@ def send_reminder(platform: str):
         print(f"チャンネルIDが設定されていません: {platform}")
         return
 
-    tasks = get_pending_tasks(platform)
-    all_tasks = get_all_tasks(platform)
+    # 全タスク／未完了タスクを1回の読み込みで取得
+    tasks, all_tasks = get_tasks(platform)
 
-    # AIスコアリング（失敗してもスキップ）
-    if tasks:
-        try:
-            tasks = score_tasks(tasks, platform)
-        except Exception as e:
-            print(f"[{platform}] AIスコアリングをスキップ: {e}")
-
-    # AI分析コメント（失敗してもスキップ）
+    # AI機能（有効時のみ。失敗してもスキップ）
     ai_comment = ""
-    if all_tasks:
-        try:
-            ai_comment = analyze_patterns(all_tasks, platform)
-        except Exception as e:
-            print(f"[{platform}] AI分析をスキップ: {e}")
+    if ENABLE_AI:
+        if tasks:
+            try:
+                tasks = score_tasks(tasks, platform)
+            except Exception as e:
+                print(f"[{platform}] AIスコアリングをスキップ: {e}")
+        if all_tasks:
+            try:
+                ai_comment = analyze_patterns(all_tasks, platform)
+            except Exception as e:
+                print(f"[{platform}] AI分析をスキップ: {e}")
 
     emoji = PLATFORM_EMOJI.get(platform, "📋")
     now_str = date.today().strftime("%Y/%m/%d")
