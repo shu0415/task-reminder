@@ -84,6 +84,66 @@ def get_all_tasks(platform: str) -> list[dict]:
     return ws.get_all_records()
 
 
+def apply_completed_formatting():
+    """「ステータス=完了」の行をグレー＋取り消し線にする条件付き書式を、
+    優先度=高の赤ルールより上位（index 0）に追加する。完了が赤より優先される。
+    既に同じルールがあれば追加しない（冪等）。全シートに適用。"""
+    ss = get_spreadsheet()
+    meta = ss.fetch_sheet_metadata({
+        "fields": "sheets(properties(sheetId,title),conditionalFormats)"
+    })
+    DONE_FORMULA = '=$E2="完了"'
+    requests = []
+
+    for sheet in meta.get("sheets", []):
+        props = sheet.get("properties", {})
+        title = props.get("title")
+        sid = props.get("sheetId")
+        if title not in PLATFORMS:
+            continue
+
+        # 既に完了ルールがあるか確認（冪等性）
+        already = False
+        for cf in sheet.get("conditionalFormats", []):
+            cond = cf.get("booleanRule", {}).get("condition", {})
+            for v in cond.get("values", []):
+                if v.get("userEnteredValue") == DONE_FORMULA:
+                    already = True
+        if already:
+            continue
+
+        requests.append({
+            "addConditionalFormatRule": {
+                "index": 0,  # 最上位＝赤ルールより優先
+                "rule": {
+                    "ranges": [{
+                        "sheetId": sid,
+                        "startRowIndex": 1,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": len(HEADERS),
+                    }],
+                    "booleanRule": {
+                        "condition": {
+                            "type": "CUSTOM_FORMULA",
+                            "values": [{"userEnteredValue": DONE_FORMULA}],
+                        },
+                        "format": {
+                            "backgroundColor": {"red": 0.85, "green": 0.85, "blue": 0.85},
+                            "textFormat": {
+                                "strikethrough": True,
+                                "foregroundColor": {"red": 0.5, "green": 0.5, "blue": 0.5},
+                            },
+                        },
+                    },
+                },
+            }
+        })
+
+    if requests:
+        ss.batch_update({"requests": requests})
+    return len(requests)
+
+
 def update_task_status(platform: str, task_id: str, status: str, user_name: Optional[str] = None):
     """タスクのステータスを更新"""
     ss = get_spreadsheet()

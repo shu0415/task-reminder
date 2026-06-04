@@ -3,7 +3,9 @@ import re
 import threading
 from slack_bolt import App
 from slack_bolt.adapter.fastapi import SlackRequestHandler
-from datetime import date
+from datetime import date, datetime, timezone, timedelta
+
+JST = timezone(timedelta(hours=9))
 from src.sheets import get_pending_tasks, get_all_tasks, update_task_status, PLATFORMS
 from src.ai import score_tasks, analyze_patterns
 
@@ -237,11 +239,34 @@ def _process_status_update(value: str, channel: str, user: str):
                 pass
         return
 
-    if success and channel:
+    if not success:
+        if channel:
+            try:
+                app.client.chat_postMessage(
+                    channel=channel,
+                    text=f"⚠️ *{task_id}* が見つかりませんでした。"
+                )
+            except Exception:
+                pass
+        return
+
+    if channel:
+        emoji = STATUS_EMOJI.get(new_status, "🔄")
+        now = datetime.now(JST).strftime("%H:%M")
+        if new_status == "完了":
+            headline = f"🎉 *{task_id}* を完了にしました！おつかれさまでした"
+        else:
+            headline = f"{emoji} *{task_id}* のステータスを *{new_status}* に変更しました"
+        blocks = [
+            {"type": "section", "text": {"type": "mrkdwn", "text": headline}},
+            {"type": "context", "elements": [
+                {"type": "mrkdwn", "text": f"操作: {user}　|　{now}　|　📋 {platform}"}
+            ]},
+        ]
         try:
             app.client.chat_postMessage(
-                channel=channel,
-                text=f"✅ *{task_id}* のステータスを *{new_status}* に更新しました（{user}）"
+                channel=channel, blocks=blocks,
+                text=f"{task_id} を {new_status} に更新しました"
             )
         except Exception as e:
             print(f"ステータス更新の通知失敗 [{task_id}]: {e}")

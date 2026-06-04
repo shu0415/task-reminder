@@ -42,6 +42,14 @@ def remind_now():
     return {"status": "sent"}
 
 
+@app.post("/setup/formatting")
+def setup_formatting():
+    """完了行をグレー化する条件付き書式を全シートに適用（赤より優先）"""
+    from src.sheets import apply_completed_formatting
+    added = apply_completed_formatting()
+    return {"status": "ok", "rules_added": added}
+
+
 def start_scheduler():
     times = []
     for i in range(1, 4):
