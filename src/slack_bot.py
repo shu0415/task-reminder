@@ -247,7 +247,7 @@ def _process_status_update(value: str, channel: str, user: str):
             print(f"ステータス更新の通知失敗 [{task_id}]: {e}")
 
 
-@app.action({"action_id": lambda aid: aid.startswith("status_update_")})
+@app.action(re.compile(r"^status_update_"))
 def handle_status_update(ack, body, action):
     # まず即座にackを返す（Slackの3秒タイムアウト・500回避）
     ack()
